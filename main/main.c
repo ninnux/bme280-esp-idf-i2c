@@ -8,8 +8,8 @@
 
 #include "bme280.h"
 
-#define SDA_PIN GPIO_NUM_15
-#define SCL_PIN GPIO_NUM_2
+#define SDA_PIN GPIO_NUM_21
+#define SCL_PIN GPIO_NUM_22
 
 #define TAG_BME280 "BME280"
 
