@@ -1,3 +1,8 @@
+
+#include "freertos/FreeRTOS.h"
+#include "esp_event.h"
+#include "esp_system.h"
+#include "nvs_flash.h"
 #include "driver/gpio.h"
 #include "driver/i2c.h"
 #include "esp_err.h"
@@ -8,13 +13,81 @@
 
 #include "bme280.h"
 
-#define SDA_PIN GPIO_NUM_21
-#define SCL_PIN GPIO_NUM_22
+#define SDA_PIN GPIO_NUM_16
+#define SCL_PIN GPIO_NUM_17
 
 #define TAG_BME280 "BME280"
 
 #define I2C_MASTER_ACK 0
 #define I2C_MASTER_NACK 1
+
+static RTC_DATA_ATTR struct timeval sleep_enter_time;
+
+float t;
+float p;
+float h;
+
+void sleeppa(int sec)
+{
+    struct timeval now;
+    gettimeofday(&now, NULL);
+    int sleep_time_ms = (now.tv_sec - sleep_enter_time.tv_sec) * 1000 + (now.tv_usec - sleep_enter_time.tv_usec) / 1000;
+
+    switch (esp_sleep_get_wakeup_cause()) {
+        case ESP_SLEEP_WAKEUP_EXT1: {
+            uint64_t wakeup_pin_mask = esp_sleep_get_ext1_wakeup_status();
+            if (wakeup_pin_mask != 0) {
+                int pin = __builtin_ffsll(wakeup_pin_mask) - 1;
+                printf("Wake up from GPIO %d\n", pin);
+            } else {
+                printf("Wake up from GPIO\n");
+            }
+            break;
+        }
+        case ESP_SLEEP_WAKEUP_TIMER: {
+            printf("Wake up from timer. Time spent in deep sleep: %dms\n", sleep_time_ms);
+	    //deepsleep=1;
+            break;
+        }
+        case ESP_SLEEP_WAKEUP_UNDEFINED:
+        default:{
+	    //deepsleep=0;
+            printf("Not a deep sleep reset\n");
+	    //cayenne_lpp_reset(&tlpp);
+	    //cayenne_lpp_reset(&hlpp);
+	    //cayenne_lpp_reset(&plpp);
+            //cayenne_lpp_add_analog_input(&tlpp,0,SLEEP_INTERVAL);
+            //cayenne_lpp_add_analog_input(&hlpp,0,SLEEP_INTERVAL);
+            //cayenne_lpp_add_analog_input(&plpp,0,SLEEP_INTERVAL);
+  	    //sensordata_init2((unsigned char **) &rtc_buffer, &rtc_buffer_len);
+        }
+    }
+
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+    const int wakeup_time_sec = sec;
+    printf("Enabling timer wakeup, %ds\n", wakeup_time_sec);
+    esp_sleep_enable_timer_wakeup(wakeup_time_sec * 1000000);
+
+    //const int ext_wakeup_pin_1 = 25;
+    //const uint64_t ext_wakeup_pin_1_mask = 1ULL << ext_wakeup_pin_1;
+    //const int ext_wakeup_pin_2 = 26;
+    //const uint64_t ext_wakeup_pin_2_mask = 1ULL << ext_wakeup_pin_2;
+
+    //printf("Enabling EXT1 wakeup on pins GPIO%d, GPIO%d\n", ext_wakeup_pin_1, ext_wakeup_pin_2);
+    //esp_sleep_enable_ext1_wakeup(ext_wakeup_pin_1_mask | ext_wakeup_pin_2_mask, ESP_EXT1_WAKEUP_ANY_HIGH);
+
+    // Isolate GPIO12 pin from external circuits. This is needed for modules
+    // which have an external pull-up resistor on GPIO12 (such as ESP32-WROVER)
+    // to minimize current consumption.
+    //rtc_gpio_isolate(GPIO_NUM_12);
+
+    printf("Entering deep sleep\n");
+    gettimeofday(&sleep_enter_time, NULL);
+    //deepsleep=1;
+    esp_deep_sleep_start();
+}
+
 
 void i2c_master_init()
 {
@@ -176,7 +249,7 @@ void task_bme280_forced_mode(void *ignore) {
 	} else {
 		ESP_LOGE(TAG_BME280, "init or setting error. code: %d", com_rslt);
 	}
-
+	sleeppa(10);
 	vTaskDelete(NULL);
 }
 
@@ -184,5 +257,5 @@ void app_main(void)
 {
 	i2c_master_init();
 	xTaskCreate(&task_bme280_normal_mode, "bme280_normal_mode",  2048, NULL, 6, NULL);
-	// xTaskCreate(&task_bme280_forced_mode, "bme280_forced_mode",  2048, NULL, 6, NULL);
+	//xTaskCreate(&task_bme280_forced_mode, "bme280_forced_mode",  2048, NULL, 6, NULL);
 }
